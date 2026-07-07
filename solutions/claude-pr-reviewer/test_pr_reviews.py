@@ -73,9 +73,34 @@ class TestPRReviewer(unittest.TestCase):
         }).encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = mock_resp
 
-        review = claude_review.call_claude("diff text", "fake_key")
+        review = claude_review.call_claude("diff --git a/file1.py b/file1.py\n+new line", "fake_key")
         self.assertIn("Summary of Changes", review)
         self.assertIn("Confidence score", review)
+        self.assertIn("(reviewed 1 of 1 files)", review)
+
+    @patch("urllib.request.urlopen")
+    def test_call_claude_multiple_files_and_truncation(self, mock_urlopen):
+        # Mock Claude response payload
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "content": [
+                {
+                    "text": "### Summary of Changes\nFixed bugs.\n\n**Confidence score**: High"
+                }
+            ]
+        }).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        # Create a huge diff containing 3 files
+        large_diff = (
+            "diff --git a/file1.py b/file1.py\n" + "x" * 50000 + "\n"
+            "diff --git a/file2.py b/file2.py\n" + "y" * 60000 + "\n"
+            "diff --git a/file3.py b/file3.py\n" + "z" * 1000 + "\n"
+        )
+        
+        review = claude_review.call_claude(large_diff, "fake_key")
+        self.assertIn("Confidence score", review)
+        self.assertIn("(reviewed 2 of 3 files)", review)
 
 if __name__ == "__main__":
     unittest.main()

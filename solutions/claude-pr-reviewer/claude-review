@@ -86,6 +86,22 @@ def call_claude(diff_text, anthropic_key, model="claude-3-5-sonnet-latest"):
         "content-type": "application/json",
         "User-Agent": "claude-pr-reviewer-action"
     }
+
+    # Count total files in original diff
+    total_files = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
+    if total_files == 0 and diff_text.strip():
+        total_files = 1
+
+    # Truncate diff if it's extremely long to avoid exceeding context limits
+    # 100,000 characters is a safe threshold (~25,000 tokens)
+    if len(diff_text) > 100000:
+        log("Warning: PR diff is very large. Truncating diff to fit context window.")
+        diff_text = diff_text[:100000] + "\n\n[Diff truncated due to size limit]"
+
+    # Count reviewed files in truncated diff
+    reviewed_files = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
+    if reviewed_files == 0 and diff_text.strip():
+        reviewed_files = 1
     
     system_prompt = (
         "You are an expert software engineer performing an automated code review.\n"
@@ -98,15 +114,9 @@ def call_claude(diff_text, anthropic_key, model="claude-3-5-sonnet-latest"):
         "### Improvement Suggestions\n"
         "List concrete, actionable suggestions to improve code quality, style, test coverage, or maintainability.\n\n"
         "### Confidence Score\n"
-        "State your confidence score exactly in the format: **Confidence score**: [Low / Medium / High]\n\n"
+        f"State your confidence score exactly in the format: **Confidence score**: [Low / Medium / High] (reviewed {reviewed_files} of {total_files} files)\n\n"
         "Be constructive, professional, and focus only on the actual code diff provided."
     )
-
-    # Truncate diff if it's extremely long to avoid exceeding context limits
-    # 100,000 characters is a safe threshold (~25,000 tokens)
-    if len(diff_text) > 100000:
-        log("Warning: PR diff is very large. Truncating diff to fit context window.")
-        diff_text = diff_text[:100000] + "\n\n[Diff truncated due to size limit]"
 
     payload = {
         "model": model,
@@ -127,7 +137,14 @@ def call_claude(diff_text, anthropic_key, model="claude-3-5-sonnet-latest"):
     try:
         with urllib.request.urlopen(req, context=ctx) as resp:
             resp_data = json.loads(resp.read().decode("utf-8"))
-            return resp_data["content"][0]["text"]
+            review_md = resp_data["content"][0]["text"]
+            
+            # Post-process to ensure the file count metadata is always present next to the Confidence score
+            pattern = r"(\*\*Confidence score\*\*:\s*(?:Low|Medium|High))(?!\s*\(reviewed)"
+            replacement = f"\\1 (reviewed {reviewed_files} of {total_files} files)"
+            review_md = re.sub(pattern, replacement, review_md, flags=re.IGNORECASE)
+            return review_md
+            
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Anthropic API call failed (HTTP {e.code}): {e.read().decode('utf-8', errors='replace')}")
     except Exception as e:
@@ -185,7 +202,7 @@ def main():
         
         if not diff_text.strip():
             log("Warning: PR diff is empty. Nothing to review.")
-            review_md = "### Summary of Changes\nNo changes detected in this Pull Request.\n\n**Confidence score**: High"
+            review_md = "### Summary of Changes\nNo changes detected in this Pull Request.\n\n**Confidence score**: High (reviewed 0 of 0 files)"
         else:
             review_md = call_claude(diff_text, anthropic_key, args.model)
         
