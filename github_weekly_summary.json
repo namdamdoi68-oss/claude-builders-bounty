@@ -154,7 +154,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 4000,\n  \"system\": \"You are a professional software engineering lead. You write clear, structured, and engaging weekly release/activity summaries based on git repository data.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ]\n}",
+        "jsonBody": "={{ { model: 'claude-sonnet-4-20250514', max_tokens: 4000, system: 'You are a professional software engineering lead. You write clear, structured, and engaging weekly release/activity summaries based on git repository data.', messages: [ { role: 'user', content: $json.prompt } ] } }}",
         "options": {}
       },
       "id": "node-claude-api",
@@ -172,7 +172,7 @@
         "url": "={{ $('JavaScript Code').item.json.discord_webhook_url }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"content\": {{ JSON.stringify($json.content[0].text) }}\n}",
+        "jsonBody": "={{ { content: $json.content[0].text } }}",
         "options": {}
       },
       "id": "node-discord-webhook",
